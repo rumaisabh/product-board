@@ -42,9 +42,28 @@
     .project-date { font-size: 12px; color: #666; margin-top: 3px; }
     .project-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
     .danger { color: #a40000; border-color: #e2b8b8; }
+    #authArea { display:flex; align-items:center; gap:8px; margin-left:8px; }
+    #authGate { position:fixed; inset:0; z-index:1000; background:#f4f4f6; display:flex; align-items:center; justify-content:center; padding:24px; }
+    #authCard { width:min(460px, 96vw); background:white; border:1px solid #ddd; border-radius:16px; padding:24px; box-shadow:0 18px 60px rgba(0,0,0,.14); }
+    #authCard h1 { margin:0 0 8px; font-size:26px; }
+    #authCard p { color:#666; line-height:1.45; margin:0 0 18px; }
+    #authMount { min-height:80px; }
+    .auth-loading { color:#666; text-align:center; padding:18px; }
+    body.signed-out #appShell { display:none; }
+    body.signed-in #authGate { display:none; }
+    .claim-row { padding:0 12px 12px; display:flex; justify-content:flex-end; }
+    .claim-row button { font-size:12px; }
   </style>
 </head>
-<body>
+<body class="signed-out">
+<div id="authGate">
+  <div id="authCard">
+    <h1>Product Board</h1>
+    <p>Sign in to create, save, and privately access your own product boards.</p>
+    <div id="authMount"><div class="auth-loading">Loading sign in…</div></div>
+  </div>
+</div>
+<div id="appShell">
 <header>
   <strong>Makeup Board</strong>
   <input id="projectName" class="project-name" value="Untitled Makeup Board" aria-label="Project name">
@@ -58,6 +77,7 @@
   <button id="exportPng">Export PNG</button>
   <button id="resetView">Reset View</button>
   <span id="saveStatus" class="save-status">Not saved</span>
+  <div id="authArea"><div id="userButton"></div></div>
 </header>
 <div class="wrap">
   <aside>
@@ -78,6 +98,7 @@
     <canvas id="canvas"></canvas>
     <div class="status">Wheel = zoom • Alt/Space + drag = pan • Select item then Delete/Backspace</div>
   </main>
+</div>
 </div>
 
 <dialog id="cropDialog">
@@ -102,6 +123,7 @@
     <button id="closeProjects">Close</button>
   </div>
   <div id="projectList" class="project-list"></div>
+  <div class="claim-row"><button id="claimLegacy">Claim my pre-account projects</button></div>
 </dialog>
 
 <script>
@@ -119,6 +141,67 @@ let trayAssets = [];
 let hasUnsavedChanges = false;
 let saveInProgress = false;
 let autosaveTimer = null;
+let clerkReady = false;
+
+async function loadScript(src, attrs={}) {
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    Object.entries(attrs).forEach(([key, value]) => script.setAttribute(key, value));
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`Could not load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function initializeClerk() {
+  const configResponse = await fetch('/api/config');
+  const config = await configResponse.json();
+  const publishableKey = config.clerkPublishableKey;
+  if (!publishableKey) throw new Error('Missing Clerk publishable key.');
+  const encodedDomain = publishableKey.split('_')[2];
+  const clerkDomain = atob(encodedDomain).slice(0, -1);
+  await loadScript(`https://${clerkDomain}/npm/@clerk/ui@1/dist/ui.browser.js`);
+  await loadScript(`https://${clerkDomain}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, {
+    'data-clerk-publishable-key': publishableKey
+  });
+  await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+  clerkReady = true;
+  renderAuthState();
+  window.Clerk.addListener(renderAuthState);
+}
+
+function renderAuthState() {
+  const signedIn = Boolean(window.Clerk && window.Clerk.user && window.Clerk.session);
+  document.body.classList.toggle('signed-in', signedIn);
+  document.body.classList.toggle('signed-out', !signedIn);
+  const authMount = document.getElementById('authMount');
+  const userButton = document.getElementById('userButton');
+  authMount.innerHTML = '';
+  userButton.innerHTML = '';
+  if (signedIn) {
+    window.Clerk.mountUserButton(userButton, { afterSignOutUrl: '/' });
+  } else {
+    currentProjectId = null;
+    clearInterval(autosaveTimer);
+    window.Clerk.mountSignIn(authMount, { routing: 'hash' });
+  }
+}
+
+async function authFetch(url, options={}) {
+  if (!clerkReady || !window.Clerk.session) throw new Error('Please sign in first.');
+  const token = await window.Clerk.session.getToken();
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url, { ...options, headers });
+}
+
+initializeClerk().catch(error => {
+  console.error(error);
+  document.getElementById('authMount').innerHTML = `<div class="hint">Authentication could not start: ${error.message}</div>`;
+});
 
 const canvasEl = document.getElementById('canvas');
 const canvas = new fabric.Canvas('canvas', { preserveObjectStacking: true, backgroundColor: '#fff', selection: true });
@@ -274,7 +357,7 @@ async function saveProject(showAlert=true){
   try {
     const payload = buildProjectPayload();
     const url = currentProjectId ? `${getApiBase()}/api/projects/${currentProjectId}` : `${getApiBase()}/api/projects`;
-    const response = await fetch(url, {
+    const response = await authFetch(url, {
       method: currentProjectId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -314,7 +397,7 @@ document.getElementById('newProject').onclick = () => {
 async function loadProject(projectId){
   try {
     setSaveStatus('Loading…');
-    const response = await fetch(`${getApiBase()}/api/projects/${projectId}`);
+    const response = await authFetch(`${getApiBase()}/api/projects/${projectId}`);
     const project = await response.json();
     if (!response.ok) throw new Error(project.error || 'Load failed');
     currentProjectId = project._id;
@@ -342,7 +425,7 @@ async function loadProject(projectId){
 
 async function deleteProjectFromDatabase(projectId){
   if (!confirm('Delete this saved project permanently?')) return;
-  const response = await fetch(`${getApiBase()}/api/projects/${projectId}`, { method: 'DELETE' });
+  const response = await authFetch(`${getApiBase()}/api/projects/${projectId}`, { method: 'DELETE' });
   if (!response.ok) return alert('Could not delete project.');
   if (currentProjectId === projectId) {
     currentProjectId = null;
@@ -355,7 +438,7 @@ async function showProjects(){
   projectList.innerHTML = '<div class="hint">Loading projects…</div>';
   projectsDialog.showModal();
   try {
-    const response = await fetch(`${getApiBase()}/api/projects`);
+    const response = await authFetch(`${getApiBase()}/api/projects`);
     const projects = await response.json();
     if (!response.ok) throw new Error(projects.error || 'Could not list projects');
     if (!projects.length) {
@@ -381,6 +464,23 @@ async function showProjects(){
 
 document.getElementById('loadProjects').onclick = showProjects;
 document.getElementById('closeProjects').onclick = () => projectsDialog.close();
+document.getElementById('claimLegacy').onclick = async () => {
+  const code = prompt('Enter the private legacy claim code you added to Render as LEGACY_CLAIM_CODE.');
+  if (!code) return;
+  try {
+    const response = await authFetch('/api/projects/claim-legacy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Claim failed');
+    alert(`Claimed ${result.claimed} previous project(s) for your account.`);
+    showProjects();
+  } catch (error) {
+    alert(error.message);
+  }
+};
 window.addEventListener('beforeunload', e => {
   if (!hasUnsavedChanges) return;
   e.preventDefault();

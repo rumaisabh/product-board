@@ -1,42 +1,44 @@
-# Makeup Board with MongoDB Save/Load
+# Product Board with private user accounts
 
-This version keeps the existing Fabric.js editor and adds:
+Fabric.js product moodboard editor with MongoDB saving and Clerk authentication.
 
-- Project name
-- Save Project
-- Load Project
-- Delete saved project
-- New Project
-- Autosave every 5 seconds after the first successful save
-- MongoDB-backed canvas, tray-image, zoom, pan, text, rotation, and position storage
+## What this version adds
 
-## Important
+- Email/Google sign-in through Clerk
+- Separate private projects for every signed-in user
+- Server-side authorization on list, load, save, update, and delete routes
+- Existing project claim tool for pre-account projects
+- Existing crop, background removal, tray, infinite board, rotation, resize, save/load, and autosave features
 
-Do not double-click `index.html` for this version. It now needs the included Node server.
-
-## Run locally
+## Local setup
 
 1. Install Node.js 18 or newer.
-2. Create a free MongoDB Atlas cluster.
-3. Copy `.env.example` to a new file named `.env`.
-4. Paste your Atlas connection string into `MONGODB_URI`.
-5. In Terminal, open this folder and run:
+2. Run `npm install`.
+3. Copy `.env.example` to `.env`.
+4. Add your MongoDB Atlas connection string.
+5. In Clerk, open **Configure > API Keys** and copy the development Publishable Key and Secret Key into `.env`.
+6. Run `npm start`.
+7. Open `http://localhost:3000`.
 
-```bash
-npm install
-npm start
-```
+## Render environment variables
 
-6. Open:
+Add these under Render > product-board > Environment:
 
-```text
-http://localhost:3000
-```
+- `MONGODB_URI`
+- `CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `LEGACY_CLAIM_CODE` (temporary and optional)
 
-## Current storage approach
+Do not upload `.env` to GitHub.
 
-For this first database-saving step, uploaded and cropped images are saved as Base64 image data inside the project document. MongoDB documents have a size limit, so a board with many large images may eventually become too large. The next development step should upload image files to Cloudinary or another file-storage service, then keep only their URLs in MongoDB.
+## Claiming old projects
 
-## Deployment note
+Projects created before authentication do not have an `ownerId`, so they are hidden after this update.
 
-GitHub Pages can host only the browser frontend and cannot run this Node server. Deploy the complete project to a Node-compatible service, or deploy the frontend and backend separately. Do not publish the `.env` file or MongoDB password to GitHub.
+1. Add a long private `LEGACY_CLAIM_CODE` in local `.env` and Render.
+2. Deploy and sign in with your own account.
+3. Open **Load Project** and click **Claim my pre-account projects**.
+4. Enter the code.
+5. After confirming your projects appear, remove `LEGACY_CLAIM_CODE` from Render and `.env`.
+
+This assigns every ownerless legacy project to the signed-in account. Only run it once as the intended owner.
