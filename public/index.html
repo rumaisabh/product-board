@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Makeup Board Editor</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: #f4f4f6; color: #222; overflow: hidden; }
+    header { height: 56px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: white; border-bottom: 1px solid #ddd; }
+    button, label.btn { border: 1px solid #ccc; background: white; border-radius: 8px; padding: 8px 11px; cursor: pointer; font-size: 14px; }
+    button:hover, label.btn:hover { background: #f1f1f1; }
+    button.primary { background: #111; color: white; border-color: #111; }
+    input[type="file"] { display: none; }
+    .wrap { display: flex; height: calc(100vh - 56px); }
+    aside { width: 280px; background: white; border-right: 1px solid #ddd; padding: 12px; overflow-y: auto; }
+    .hint { font-size: 12px; color: #666; line-height: 1.4; margin: 8px 0 12px; }
+    .toggles { display: grid; gap: 8px; margin-bottom: 12px; font-size: 13px; }
+    .tray { display: grid; gap: 12px; }
+    .asset { border: 1px solid #ddd; border-radius: 10px; padding: 8px; background: #fafafa; }
+    .asset img { width: 100%; max-height: 150px; object-fit: contain; background-image: linear-gradient(45deg,#eee 25%,transparent 25%),linear-gradient(-45deg,#eee 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#eee 75%),linear-gradient(-45deg,transparent 75%,#eee 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; border-radius: 8px; }
+    .asset-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .asset-actions button { flex: 1; padding: 7px; font-size: 12px; }
+    main { flex: 1; position: relative; overflow: hidden; }
+    #canvas { background: #fff; }
+    .canvas-controls { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; z-index: 5; }
+    .status { position: absolute; bottom: 12px; left: 12px; background: rgba(255,255,255,.9); border: 1px solid #ddd; padding: 7px 10px; border-radius: 8px; font-size: 12px; color: #555; }
+    dialog { border: 0; border-radius: 14px; padding: 0; width: min(1000px, 96vw); box-shadow: 0 20px 80px rgba(0,0,0,.25); }
+    dialog::backdrop { background: rgba(0,0,0,.45); }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #ddd; background: #fff; }
+    .modal-body { padding: 12px; background: #f8f8f8; }
+    .crop-wrap { overflow: auto; max-height: 68vh; border: 1px solid #ddd; background: white; text-align: center; }
+    #cropCanvas { max-width: 100%; cursor: crosshair; }
+    .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px; background: white; border-top: 1px solid #ddd; }
+    .project-name { width: 180px; border: 1px solid #ccc; border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+    .save-status { margin-left: auto; font-size: 12px; color: #666; white-space: nowrap; }
+    .project-list { display: grid; gap: 8px; max-height: 55vh; overflow-y: auto; padding: 12px; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #ddd; border-radius: 10px; padding: 10px; background: #fff; }
+    .project-meta { min-width: 0; }
+    .project-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .project-date { font-size: 12px; color: #666; margin-top: 3px; }
+    .project-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .danger { color: #a40000; border-color: #e2b8b8; }
+  </style>
+</head>
+<body>
+<header>
+  <strong>Makeup Board</strong>
+  <input id="projectName" class="project-name" value="Untitled Makeup Board" aria-label="Project name">
+  <button class="primary" id="saveProject">Save Project</button>
+  <button id="loadProjects">Load Project</button>
+  <button id="newProject">New Project</button>
+  <label class="btn" for="upload">Upload Images</label>
+  <input id="upload" type="file" accept="image/*" multiple>
+  <button id="addText">Add Text</button>
+  <button id="deleteSelected">Delete Selected</button>
+  <button id="exportPng">Export PNG</button>
+  <button id="resetView">Reset View</button>
+  <span id="saveStatus" class="save-status">Not saved</span>
+</header>
+<div class="wrap">
+  <aside>
+    <div class="toggles">
+      <label><input type="checkbox" id="removeBgUpload" checked> Remove background on upload</label>
+      <label><input type="checkbox" id="removeBgCrop" checked> Remove background on crops</label>
+    </div>
+    <div class="hint">Tip: click <b>Add</b> to place an item on the board. Click <b>Crop</b> to cut multiple products from one collage. Use Delete/Backspace to remove selected board items.</div>
+    <div id="tray" class="tray"></div>
+  </aside>
+  <main>
+    <div class="canvas-controls">
+      <button id="zoomIn">Zoom +</button>
+      <button id="zoomOut">Zoom -</button>
+      <button id="bringFront">Bring Front</button>
+      <button id="sendBack">Send Back</button>
+    </div>
+    <canvas id="canvas"></canvas>
+    <div class="status">Wheel = zoom • Alt/Space + drag = pan • Select item then Delete/Backspace</div>
+  </main>
+</div>
+
+<dialog id="cropDialog">
+  <div class="modal-head">
+    <strong>Manual Crop</strong>
+    <button id="closeCrop">Close</button>
+  </div>
+  <div class="modal-body">
+    <div class="hint">Draw a box around one product, release your mouse, then click Create Crop. The window stays open so you can crop another item.</div>
+    <div class="crop-wrap"><canvas id="cropCanvas"></canvas></div>
+  </div>
+  <div class="modal-actions">
+    <button class="primary" id="createCrop">Create Crop</button>
+    <button id="clearCrop">Clear Box</button>
+    <label><input type="checkbox" id="cropRemoveBgInline" checked> Remove background from this crop</label>
+  </div>
+</dialog>
+
+<dialog id="projectsDialog">
+  <div class="modal-head">
+    <strong>Saved Projects</strong>
+    <button id="closeProjects">Close</button>
+  </div>
+  <div id="projectList" class="project-list"></div>
+</dialog>
+
+<script>
+const tray = document.getElementById('tray');
+const upload = document.getElementById('upload');
+const removeBgUpload = document.getElementById('removeBgUpload');
+const removeBgCrop = document.getElementById('removeBgCrop');
+const cropRemoveBgInline = document.getElementById('cropRemoveBgInline');
+const projectNameInput = document.getElementById('projectName');
+const saveStatus = document.getElementById('saveStatus');
+const projectsDialog = document.getElementById('projectsDialog');
+const projectList = document.getElementById('projectList');
+let currentProjectId = null;
+let trayAssets = [];
+let hasUnsavedChanges = false;
+let saveInProgress = false;
+let autosaveTimer = null;
+
+const canvasEl = document.getElementById('canvas');
+const canvas = new fabric.Canvas('canvas', { preserveObjectStacking: true, backgroundColor: '#fff', selection: true });
+function sizeCanvas(){ canvas.setWidth(window.innerWidth - 280); canvas.setHeight(window.innerHeight - 56); canvas.requestRenderAll(); }
+window.addEventListener('resize', sizeCanvas); sizeCanvas();
+
+function setSaveStatus(text, isError=false){
+  saveStatus.textContent = text;
+  saveStatus.style.color = isError ? '#a40000' : '#666';
+}
+function markUnsaved(){
+  hasUnsavedChanges = true;
+  setSaveStatus(currentProjectId ? 'Unsaved changes' : 'Not saved');
+}
+function startAutosave(){
+  clearInterval(autosaveTimer);
+  autosaveTimer = setInterval(() => {
+    if (currentProjectId && hasUnsavedChanges && !saveInProgress) saveProject(false);
+  }, 5000);
+}
+function getApiBase(){ return ''; }
+
+let spaceDown = false, isPanning = false, lastPosX = 0, lastPosY = 0;
+window.addEventListener('keydown', e => { if(e.code === 'Space') { spaceDown = true; e.preventDefault(); } if(e.key === 'Delete' || e.key === 'Backspace') deleteSelected(); });
+window.addEventListener('keyup', e => { if(e.code === 'Space') spaceDown = false; });
+canvas.on('mouse:wheel', opt => { let zoom = canvas.getZoom(); zoom *= 0.999 ** opt.e.deltaY; zoom = Math.min(Math.max(zoom, 0.15), 5); canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom); opt.e.preventDefault(); opt.e.stopPropagation(); });
+canvas.on('mouse:down', opt => { if (spaceDown || opt.e.altKey || opt.e.button === 1 || opt.e.button === 2) { isPanning = true; canvas.selection = false; lastPosX = opt.e.clientX; lastPosY = opt.e.clientY; } });
+canvas.on('mouse:move', opt => { if (isPanning) { const e = opt.e; const vpt = canvas.viewportTransform; vpt[4] += e.clientX - lastPosX; vpt[5] += e.clientY - lastPosY; canvas.requestRenderAll(); lastPosX = e.clientX; lastPosY = e.clientY; } });
+canvas.on('mouse:up', () => { isPanning = false; canvas.selection = true; });
+canvasEl.addEventListener('contextmenu', e => e.preventDefault());
+
+function deleteSelected(){
+  const active = canvas.getActiveObjects();
+  if (!active.length) return;
+  active.forEach(o => canvas.remove(o));
+  canvas.discardActiveObject();
+  canvas.requestRenderAll();
+  markUnsaved();
+}
+document.getElementById('deleteSelected').onclick = deleteSelected;
+document.getElementById('bringFront').onclick = () => { const o = canvas.getActiveObject(); if(o) { canvas.bringToFront(o); canvas.requestRenderAll(); markUnsaved(); } };
+document.getElementById('sendBack').onclick = () => { const o = canvas.getActiveObject(); if(o) { canvas.sendToBack(o); canvas.requestRenderAll(); markUnsaved(); } };
+document.getElementById('zoomIn').onclick = () => canvas.setZoom(Math.min(canvas.getZoom() * 1.15, 5));
+document.getElementById('zoomOut').onclick = () => canvas.setZoom(Math.max(canvas.getZoom() / 1.15, .15));
+document.getElementById('resetView').onclick = () => { canvas.setViewportTransform([1,0,0,1,0,0]); markUnsaved(); };
+document.getElementById('addText').onclick = () => { const t = new fabric.IText('Text', { left: 120, top: 120, fontSize: 40, fill: '#111' }); canvas.add(t).setActiveObject(t); markUnsaved(); };
+document.getElementById('exportPng').onclick = () => { const data = canvas.toDataURL({ format: 'png', multiplier: 2 }); const a = document.createElement('a'); a.href = data; a.download = 'makeup-board.png'; a.click(); };
+
+canvas.on('object:added', markUnsaved);
+canvas.on('object:modified', markUnsaved);
+canvas.on('object:removed', markUnsaved);
+canvas.on('text:changed', markUnsaved);
+canvas.on('mouse:wheel', markUnsaved);
+projectNameInput.addEventListener('input', markUnsaved);
+
+upload.addEventListener('change', async e => {
+  for (const file of e.target.files) {
+    const data = await fileToDataUrl(file);
+    const out = removeBgUpload.checked ? await removeBackground(data) : data;
+    addAsset(out, file.name);
+  }
+  upload.value = '';
+});
+
+function fileToDataUrl(file){ return new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); }); }
+
+function addAsset(src, name='image', options={}){
+  const asset = { id: options.id || crypto.randomUUID(), src, name };
+  if (!options.skipTrack) trayAssets.unshift(asset);
+  const div = document.createElement('div'); div.className = 'asset'; div.dataset.assetId = asset.id;
+  div.innerHTML = `<img draggable="true" src="${src}" alt="${name}"><div class="asset-actions"><button>Add</button><button>Crop</button><button>Delete</button></div>`;
+  const img = div.querySelector('img'); const [addBtn, cropBtn, delBtn] = div.querySelectorAll('button');
+  addBtn.onclick = () => addToBoard(src);
+  img.ondblclick = () => addToBoard(src);
+  cropBtn.onclick = () => openCrop(src);
+  delBtn.onclick = () => { trayAssets = trayAssets.filter(a => a.id !== asset.id); div.remove(); markUnsaved(); };
+  img.addEventListener('dragstart', ev => ev.dataTransfer.setData('text/plain', src));
+  tray.prepend(div);
+  if (!options.silent) markUnsaved();
+}
+
+canvasEl.addEventListener('dragover', e => e.preventDefault());
+canvasEl.addEventListener('drop', e => { e.preventDefault(); const src = e.dataTransfer.getData('text/plain'); if (src) addToBoard(src, e.offsetX, e.offsetY); });
+function addToBoard(src, x=160, y=160){
+  fabric.Image.fromURL(src, img => {
+    img.set({ left: x, top: y, cornerStyle: 'circle', transparentCorners: false, padding: 8 });
+    const max = 220; const scale = Math.min(max / img.width, max / img.height, 1);
+    img.scale(scale);
+    canvas.add(img).setActiveObject(img); canvas.requestRenderAll(); markUnsaved();
+  }, { crossOrigin: 'anonymous' });
+}
+
+// Simple local background removal: removes near-white/near-solid backgrounds from product photos.
+// Best after cropping one product.
+async function removeBackground(src){
+  const img = await loadImage(src);
+  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx = c.getContext('2d'); ctx.drawImage(img,0,0);
+  const data = ctx.getImageData(0,0,c.width,c.height); const p = data.data;
+  const corners = [[0,0],[c.width-1,0],[0,c.height-1],[c.width-1,c.height-1]].map(([x,y]) => {
+    const i=(y*c.width+x)*4; return [p[i],p[i+1],p[i+2]];
+  });
+  const bg = corners.reduce((a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],[0,0,0]).map(v=>v/4);
+  for(let y=0;y<c.height;y++) for(let x=0;x<c.width;x++){
+    const i=(y*c.width+x)*4; const r=p[i],g=p[i+1],b=p[i+2];
+    const dist = Math.hypot(r-bg[0],g-bg[1],b-bg[2]);
+    const whiteish = r>225 && g>225 && b>225;
+    const nearBg = dist < 45;
+    if (whiteish || nearBg) p[i+3] = 0;
+  }
+  ctx.putImageData(data,0,0);
+  return c.toDataURL('image/png');
+}
+function loadImage(src){ return new Promise((res, rej) => { const i = new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+
+const cropDialog = document.getElementById('cropDialog');
+const cropCanvas = document.getElementById('cropCanvas'); const cropCtx = cropCanvas.getContext('2d');
+let cropSrc='', cropImg=null, cropRect=null, drawing=false, sx=0, sy=0;
+function openCrop(src){ cropSrc = src; cropRemoveBgInline.checked = removeBgCrop.checked; loadImage(src).then(img => { cropImg=img; const maxW = 920; const scale = Math.min(maxW / img.naturalWidth, 1); cropCanvas.width = img.naturalWidth * scale; cropCanvas.height = img.naturalHeight * scale; cropCanvas.dataset.scale = scale; cropRect = null; drawCrop(); cropDialog.showModal(); }); }
+function drawCrop(){ cropCtx.clearRect(0,0,cropCanvas.width,cropCanvas.height); cropCtx.drawImage(cropImg,0,0,cropCanvas.width,cropCanvas.height); if(cropRect){ cropCtx.save(); cropCtx.strokeStyle='#111'; cropCtx.lineWidth=2; cropCtx.setLineDash([8,5]); cropCtx.strokeRect(cropRect.x,cropRect.y,cropRect.w,cropRect.h); cropCtx.fillStyle='rgba(0,0,0,.08)'; cropCtx.fillRect(cropRect.x,cropRect.y,cropRect.w,cropRect.h); cropCtx.restore(); } }
+cropCanvas.addEventListener('mousedown', e => { const r=cropCanvas.getBoundingClientRect(); drawing=true; sx=e.clientX-r.left; sy=e.clientY-r.top; cropRect={x:sx,y:sy,w:0,h:0}; drawCrop(); });
+cropCanvas.addEventListener('mousemove', e => { if(!drawing) return; const r=cropCanvas.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top; cropRect={x:Math.min(sx,x), y:Math.min(sy,y), w:Math.abs(x-sx), h:Math.abs(y-sy)}; drawCrop(); });
+['mouseup','mouseleave'].forEach(evt => cropCanvas.addEventListener(evt, () => { drawing=false; }));
+document.getElementById('clearCrop').onclick = () => { cropRect=null; drawCrop(); };
+document.getElementById('closeCrop').onclick = () => cropDialog.close();
+document.getElementById('createCrop').onclick = async () => {
+  if(!cropRect || cropRect.w < 5 || cropRect.h < 5) return alert('Draw a crop box first.');
+  const scale = Number(cropCanvas.dataset.scale || 1);
+  const c = document.createElement('canvas'); c.width = cropRect.w / scale; c.height = cropRect.h / scale;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(cropImg, cropRect.x/scale, cropRect.y/scale, cropRect.w/scale, cropRect.h/scale, 0, 0, c.width, c.height);
+  let src = c.toDataURL('image/png');
+  if(cropRemoveBgInline.checked) src = await removeBackground(src);
+  addAsset(src, 'crop');
+  cropRect = null; drawCrop();
+};
+
+
+function buildProjectPayload(){
+  return {
+    name: projectNameInput.value.trim() || 'Untitled Makeup Board',
+    canvasJson: canvas.toJSON(),
+    viewportTransform: canvas.viewportTransform ? [...canvas.viewportTransform] : [1,0,0,1,0,0],
+    trayAssets,
+    previewDataUrl: canvas.toDataURL({ format: 'png', multiplier: 0.35 })
+  };
+}
+
+async function saveProject(showAlert=true){
+  if (saveInProgress) return;
+  saveInProgress = true;
+  setSaveStatus('Saving…');
+  try {
+    const payload = buildProjectPayload();
+    const url = currentProjectId ? `${getApiBase()}/api/projects/${currentProjectId}` : `${getApiBase()}/api/projects`;
+    const response = await fetch(url, {
+      method: currentProjectId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Save failed');
+    currentProjectId = result.projectId || currentProjectId;
+    hasUnsavedChanges = false;
+    setSaveStatus(`Saved ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`);
+    startAutosave();
+    if (showAlert) alert('Project saved to MongoDB.');
+  } catch (error) {
+    console.error(error);
+    setSaveStatus('Save failed', true);
+    if (showAlert) alert(`Could not save project: ${error.message}\n\nMake sure the Node server is running and MongoDB is connected.`);
+  } finally {
+    saveInProgress = false;
+  }
+}
+
+document.getElementById('saveProject').onclick = () => saveProject(true);
+
+document.getElementById('newProject').onclick = () => {
+  if (hasUnsavedChanges && !confirm('Start a new project and discard unsaved changes?')) return;
+  currentProjectId = null;
+  projectNameInput.value = 'Untitled Makeup Board';
+  canvas.clear();
+  canvas.backgroundColor = '#fff';
+  canvas.setViewportTransform([1,0,0,1,0,0]);
+  trayAssets = [];
+  tray.innerHTML = '';
+  hasUnsavedChanges = false;
+  setSaveStatus('Not saved');
+  canvas.requestRenderAll();
+};
+
+async function loadProject(projectId){
+  try {
+    setSaveStatus('Loading…');
+    const response = await fetch(`${getApiBase()}/api/projects/${projectId}`);
+    const project = await response.json();
+    if (!response.ok) throw new Error(project.error || 'Load failed');
+    currentProjectId = project._id;
+    projectNameInput.value = project.name || 'Untitled Makeup Board';
+    trayAssets = Array.isArray(project.trayAssets) ? project.trayAssets : [];
+    tray.innerHTML = '';
+    [...trayAssets].reverse().forEach(asset => addAsset(asset.src, asset.name, { id: asset.id, skipTrack: true, silent: true }));
+    canvas.loadFromJSON(project.canvasJson || { objects: [] }, () => {
+      canvas.backgroundColor = '#fff';
+      if (Array.isArray(project.viewportTransform) && project.viewportTransform.length === 6) {
+        canvas.setViewportTransform(project.viewportTransform);
+      }
+      canvas.requestRenderAll();
+      hasUnsavedChanges = false;
+      setSaveStatus('Loaded');
+      startAutosave();
+    });
+    projectsDialog.close();
+  } catch (error) {
+    console.error(error);
+    setSaveStatus('Load failed', true);
+    alert(`Could not load project: ${error.message}`);
+  }
+}
+
+async function deleteProjectFromDatabase(projectId){
+  if (!confirm('Delete this saved project permanently?')) return;
+  const response = await fetch(`${getApiBase()}/api/projects/${projectId}`, { method: 'DELETE' });
+  if (!response.ok) return alert('Could not delete project.');
+  if (currentProjectId === projectId) {
+    currentProjectId = null;
+    setSaveStatus('Current project deleted from database');
+  }
+  showProjects();
+}
+
+async function showProjects(){
+  projectList.innerHTML = '<div class="hint">Loading projects…</div>';
+  projectsDialog.showModal();
+  try {
+    const response = await fetch(`${getApiBase()}/api/projects`);
+    const projects = await response.json();
+    if (!response.ok) throw new Error(projects.error || 'Could not list projects');
+    if (!projects.length) {
+      projectList.innerHTML = '<div class="hint">No saved projects yet. Save this board first.</div>';
+      return;
+    }
+    projectList.innerHTML = '';
+    projects.forEach(project => {
+      const row = document.createElement('div');
+      row.className = 'project-row';
+      const date = project.updatedAt ? new Date(project.updatedAt).toLocaleString() : '';
+      row.innerHTML = `<div class="project-meta"><div class="project-title"></div><div class="project-date"></div></div><div class="project-row-actions"><button class="open-project">Open</button><button class="delete-project danger">Delete</button></div>`;
+      row.querySelector('.project-title').textContent = project.name || 'Untitled Makeup Board';
+      row.querySelector('.project-date').textContent = date;
+      row.querySelector('.open-project').onclick = () => loadProject(project._id);
+      row.querySelector('.delete-project').onclick = () => deleteProjectFromDatabase(project._id);
+      projectList.appendChild(row);
+    });
+  } catch (error) {
+    projectList.innerHTML = `<div class="hint">${error.message}. Make sure the backend server is running.</div>`;
+  }
+}
+
+document.getElementById('loadProjects').onclick = showProjects;
+document.getElementById('closeProjects').onclick = () => projectsDialog.close();
+window.addEventListener('beforeunload', e => {
+  if (!hasUnsavedChanges) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+</script>
+</body>
+</html>
