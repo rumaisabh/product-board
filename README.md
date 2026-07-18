@@ -1,44 +1,77 @@
-# Product Board with private user accounts
+# Product Board
+## Live Website
 
-Fabric.js product moodboard editor with MongoDB saving and Clerk authentication.
+[Open Product Board](https://product-board-95gc.onrender.com)
 
-## What this version adds
+A web-based product moodboard editor for uploading, cropping, arranging, and saving product images.
 
-- Email/Google sign-in through Clerk
-- Separate private projects for every signed-in user
-- Server-side authorization on list, load, save, update, and delete routes
-- Existing project claim tool for pre-account projects
-- Existing crop, background removal, tray, infinite board, rotation, resize, save/load, and autosave features
+## Live Website
 
-## Local setup
+[Open Product Board](https://product-board-95gc.onrender.com)
 
-1. Install Node.js 18 or newer.
-2. Run `npm install`.
-3. Copy `.env.example` to `.env`.
-4. Add your MongoDB Atlas connection string.
-5. In Clerk, open **Configure > API Keys** and copy the development Publishable Key and Secret Key into `.env`.
-6. Run `npm start`.
-7. Open `http://localhost:3000`.
+> The free Render server may take up to 50 seconds to wake after inactivity.
 
-## Render environment variables
+## Features
 
-Add these under Render > product-board > Environment:
+* Email and Google authentication
+* Private projects for each user
+* Upload and crop product images
+* Optional background removal
+* Drag, resize, rotate, and layer items
+* Add editable text
+* Zoom and pan across the canvas
+* Save and load projects
+* Export boards as PNG
 
-- `MONGODB_URI`
-- `CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `LEGACY_CLAIM_CODE` (temporary and optional)
+## Built With
 
-Do not upload `.env` to GitHub.
+* Fabric.js
+* JavaScript, HTML, and CSS
+* Node.js and Express
+* MongoDB Atlas
+* Clerk
+* Render
 
-## Claiming old projects
+## Run Locally
 
-Projects created before authentication do not have an `ownerId`, so they are hidden after this update.
+Clone the repository and install the dependencies:
 
-1. Add a long private `LEGACY_CLAIM_CODE` in local `.env` and Render.
-2. Deploy and sign in with your own account.
-3. Open **Load Project** and click **Claim my pre-account projects**.
-4. Enter the code.
-5. After confirming your projects appear, remove `LEGACY_CLAIM_CODE` from Render and `.env`.
+```bash
+npm install
+```
 
-This assigns every ownerless legacy project to the signed-in account. Only run it once as the intended owner.
+Create a `.env` file:
+
+```env
+MONGODB_URI=your_mongodb_connection_string
+PORT=3000
+CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+CLERK_SECRET_KEY=your_clerk_secret_key
+LEGACY_CLAIM_CODE=your_private_claim_code
+```
+
+Start the server:
+
+```bash
+npm start
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+## Security
+
+Private keys and database credentials must only be stored in `.env` locally or in Render environment variables. Never upload `.env` to GitHub.
+
+## Planned Improvements
+
+* Cloud image storage
+* Automatic project reopening
+* Improved autosave
+* Undo and redo
+* Product folders and categories
+* Improved mobile layout
+
